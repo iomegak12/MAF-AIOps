@@ -1,0 +1,1346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Contoso Commerce · AKS Production Dashboard</title>
+<style>
+  /* ─── Azure design tokens ────────────────────────────────────── */
+  :root {
+    --bg:            #faf9f8;
+    --panel:         #ffffff;
+    --panel-alt:     #f3f2f1;
+    --border:        #edebe9;
+    --border-strong: #d2d0ce;
+    --text:          #201f1e;
+    --text-secondary:#605e5c;
+    --text-tertiary: #8a8886;
+    --primary:        #0078d4;
+    --primary-hover:  #106ebe;
+    --primary-pressed:#005a9e;
+    --primary-bg:     #deecf9;
+    --success:    #107c10;
+    --success-bg: #dff6dd;
+    --warning:    #b88217;
+    --warning-bg: #fff4ce;
+    --critical:   #a4262c;
+    --critical-bg:#fde7e9;
+    --info:       #0078d4;
+    --info-bg:    #deecf9;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.04), 0 0 1px rgba(0,0,0,0.06);
+    --shadow-md: 0 3.2px 7.2px rgba(0,0,0,0.10), 0 0.6px 1.8px rgba(0,0,0,0.07);
+    --shadow-lg: 0 25.6px 57.6px rgba(0,0,0,0.18), 0 4.8px 14.4px rgba(0,0,0,0.10);
+    --radius-sm: 2px;
+    --radius-md: 4px;
+    --radius-lg: 8px;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI","Segoe UI Variable",-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,sans-serif;
+    font-size: 14px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, h4 { margin: 0; font-weight: 600; color: var(--text); }
+  a { color: var(--primary); text-decoration: none; }
+
+  /* ─── Service link bar (top, sticky) ─────────────────────────── */
+  .service-bar {
+    position: sticky; top: 0; z-index: 110;
+    background: #f3f2f1;
+    border-bottom: 1px solid var(--border-strong);
+    padding: 8px 24px;
+    display: flex; align-items: center; gap: 12px;
+    font-size: 12px;
+  }
+  .service-bar label {
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-size: 11px;
+  }
+  .service-bar input[type=text] {
+    flex: 0 1 320px;
+    padding: 6px 10px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    font: inherit;
+    font-family: "Cascadia Code","Consolas",monospace;
+    font-size: 12px;
+    background: #fff;
+    color: var(--text);
+  }
+  .service-bar input[type=text]:focus {
+    outline: 2px solid var(--primary);
+    outline-offset: -1px;
+    border-color: var(--primary);
+  }
+  .service-bar button {
+    padding: 6px 12px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-strong);
+    background: #fff;
+    color: var(--text);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+  }
+  .service-bar button:hover { background: var(--primary-bg); border-color: var(--primary); color: var(--primary); }
+  .service-bar button.connect-btn.connected {
+    background: var(--success-bg);
+    border-color: var(--success);
+    color: var(--success);
+  }
+  .service-status {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-weight: 600;
+    margin-left: auto;
+    padding: 4px 10px;
+    border-radius: 11px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .service-status .dot {
+    width: 8px; height: 8px; border-radius: 50%;
+  }
+  .service-status.offline { color: var(--text-secondary); background: #e1dfdd; }
+  .service-status.offline .dot { background: #8a8886; }
+  .service-status.live { color: var(--success); background: var(--success-bg); }
+  .service-status.live .dot {
+    background: var(--success);
+    box-shadow: 0 0 0 0 rgba(16,124,16,0.6);
+    animation: pulse-dot 1.8s ease-in-out infinite;
+  }
+  .service-status.error { color: var(--critical); background: var(--critical-bg); }
+  .service-status.error .dot { background: var(--critical); }
+  @keyframes pulse-dot {
+    0%,100% { box-shadow: 0 0 0 0 rgba(16,124,16,0.5); }
+    50%     { box-shadow: 0 0 0 6px rgba(16,124,16,0); }
+  }
+
+  /* ─── Lab simulator strip ────────────────────────────────────── */
+  .lab-strip {
+    position: sticky; top: 39px; z-index: 100;
+    background: linear-gradient(180deg, #1a1d23 0%, #2c2f36 100%);
+    color: #fafafa;
+    padding: 10px 24px;
+    display: flex; align-items: center; gap: 16px;
+    border-bottom: 2px solid #f7b500;
+    box-shadow: var(--shadow-md);
+  }
+  .lab-strip-label {
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: #f7b500;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .lab-strip-label::before {
+    content: "";
+    width: 8px; height: 8px; border-radius: 50%;
+    background: #f7b500;
+    box-shadow: 0 0 8px #f7b500;
+    animation: lab-pulse 2s ease-in-out infinite;
+  }
+  .lab-strip-note {
+    font-size: 11px;
+    color: #a8a8a8;
+    margin-left: 8px;
+    font-style: italic;
+  }
+  @keyframes lab-pulse {
+    0%,100% { opacity: 1; }
+    50%     { opacity: 0.45; }
+  }
+  .state-switches { display: flex; gap: 4px; margin-left: auto; }
+  .state-btn {
+    background: rgba(255,255,255,0.06);
+    color: #e8e8e8;
+    border: 1px solid rgba(255,255,255,0.10);
+    padding: 7px 14px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    transition: all 0.15s ease;
+  }
+  .state-btn:hover { background: rgba(255,255,255,0.12); color: #fff; }
+  .state-btn.active {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #ffffff;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.15) inset;
+  }
+  .hitl-trigger {
+    margin-left: 12px;
+    background: #f7b500;
+    color: #1a1d23;
+    border: none;
+    padding: 7px 14px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    transition: all 0.15s ease;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .hitl-trigger:hover:not(:disabled) { background: #ffc83d; transform: translateY(-1px); }
+  .hitl-trigger:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  /* ─── Azure Portal top bar ───────────────────────────────────── */
+  .topbar {
+    background: #1f1f1f;
+    color: #ffffff;
+    padding: 0 24px;
+    height: 48px;
+    display: flex; align-items: center; gap: 24px;
+  }
+  .azure-mark { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; }
+  .breadcrumb {
+    font-size: 12px;
+    color: #d2d0ce;
+    flex: 1;
+    display: flex; align-items: center; gap: 6px;
+    overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+  }
+  .breadcrumb span.sep { color: #605e5c; }
+  .breadcrumb span.leaf { color: #fff; font-weight: 600; }
+  .topbar-right { display: flex; align-items: center; gap: 14px; }
+  .icon-btn {
+    width: 32px; height: 32px;
+    display: inline-grid; place-items: center;
+    border-radius: 50%; color: #d2d0ce; cursor: pointer;
+  }
+  .icon-btn:hover { background: rgba(255,255,255,0.08); }
+  .avatar {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #5c2d91, #0078d4);
+    color: #fff;
+    display: grid; place-items: center;
+    font-size: 12px; font-weight: 600;
+  }
+
+  /* ─── Resource header ────────────────────────────────────────── */
+  .resource-header {
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    padding: 18px 24px 14px 24px;
+  }
+  .resource-title {
+    display: flex; align-items: center; gap: 12px;
+    font-size: 20px; font-weight: 600;
+  }
+  .resource-title-icon {
+    width: 32px; height: 32px;
+    background: linear-gradient(135deg, #0078d4, #00bcf2);
+    border-radius: var(--radius-sm);
+    display: grid; place-items: center;
+    color: #fff; font-size: 14px; font-weight: 700;
+  }
+  .resource-subtitle {
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  /* ─── Status banner ──────────────────────────────────────────── */
+  .status-banner {
+    margin: 16px 24px 0 24px;
+    border-radius: var(--radius-md);
+    padding: 14px 18px;
+    display: flex; align-items: center; gap: 14px;
+    border: 1px solid transparent;
+    transition: all 0.35s ease;
+  }
+  .banner-icon {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    display: grid; place-items: center;
+    flex-shrink: 0;
+    font-size: 18px; font-weight: 700;
+  }
+  .banner-text { flex: 1; }
+  .banner-title { font-size: 14px; font-weight: 600; }
+  .banner-subtitle { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+  .banner-meta {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+  .status-banner.healthy {
+    background: var(--success-bg);
+    border-color: rgba(16,124,16,0.25);
+  }
+  .status-banner.healthy .banner-icon { background: var(--success); color: #fff; }
+  .status-banner.healthy .banner-title { color: var(--success); }
+  .status-banner.critical {
+    background: var(--critical-bg);
+    border-color: rgba(164,38,44,0.25);
+    animation: critical-pulse 2.4s ease-in-out infinite;
+  }
+  .status-banner.critical .banner-icon { background: var(--critical); color: #fff; }
+  .status-banner.critical .banner-title { color: var(--critical); }
+  @keyframes critical-pulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(164,38,44,0.0); }
+    50%     { box-shadow: 0 0 0 6px rgba(164,38,44,0.10); }
+  }
+  .status-banner.warning {
+    background: var(--warning-bg);
+    border-color: rgba(184,130,23,0.30);
+  }
+  .status-banner.warning .banner-icon { background: var(--warning); color: #fff; }
+  .status-banner.warning .banner-title { color: var(--warning); }
+  .status-banner.info {
+    background: var(--info-bg);
+    border-color: rgba(0,120,212,0.20);
+  }
+  .status-banner.info .banner-icon { background: var(--info); color: #fff; }
+  .status-banner.info .banner-title { color: var(--info); }
+
+  /* ─── Section + tiles ────────────────────────────────────────── */
+  main { padding: 16px 24px 48px 24px; transition: opacity 0.2s ease; }
+  main.transitioning { opacity: 0.5; }
+  .section {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+  .section-head {
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+    background: linear-gradient(180deg, #ffffff, #fcfcfc);
+  }
+  .section-head h2 { font-size: 14px; font-weight: 600; letter-spacing: 0.01em; }
+  .section-head .meta {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    font-variant-numeric: tabular-nums;
+  }
+  .section-body { padding: 18px; }
+
+  .tile-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 14px;
+  }
+  @media (max-width: 1100px) { .tile-grid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+  @media (max-width: 700px)  { .tile-grid { grid-template-columns: 1fr; } }
+
+  .tile {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-left: 4px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    padding: 14px 16px;
+    position: relative;
+    transition: border-color 0.35s ease, box-shadow 0.2s ease;
+  }
+  .tile:hover { box-shadow: var(--shadow-sm); }
+  .tile.healthy  { border-left-color: var(--success); }
+  .tile.warning  { border-left-color: var(--warning); }
+  .tile.critical { border-left-color: var(--critical); }
+  .tile-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-secondary);
+    font-weight: 600;
+  }
+  .tile-value-row { display: flex; align-items: baseline; gap: 6px; margin-top: 6px; }
+  .tile-value {
+    font-size: 28px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    transition: color 0.35s ease;
+  }
+  .tile.critical .tile-value { color: var(--critical); }
+  .tile.warning  .tile-value { color: var(--warning); }
+  .tile.healthy  .tile-value { color: var(--text); }
+  .tile-unit { font-size: 13px; color: var(--text-secondary); font-weight: 500; }
+  .tile-meta {
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    display: flex; align-items: center; gap: 6px;
+  }
+  .tile-trend { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .tile-trend.up { color: var(--critical); }
+  .tile-trend.down { color: var(--success); }
+  .tile-trend.steady { color: var(--text-tertiary); }
+
+  .pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px;
+    border-radius: 11px;
+    font-size: 10px; font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .pill.healthy  { background: var(--success-bg); color: var(--success); }
+  .pill.warning  { background: var(--warning-bg); color: var(--warning); }
+  .pill.critical { background: var(--critical-bg); color: var(--critical); }
+  .pill.info     { background: var(--info-bg);    color: var(--info); }
+  .tile-status { position: absolute; top: 12px; right: 12px; }
+
+  /* ─── Topology SVG ───────────────────────────────────────────── */
+  .topology { width: 100%; height: auto; max-height: 320px; }
+  .topo-node-rect { transition: fill 0.35s ease, stroke 0.35s ease; }
+  .topo-node-text {
+    font-family: "Segoe UI", system-ui, sans-serif;
+    font-size: 12px; font-weight: 600;
+    fill: var(--text);
+    pointer-events: none;
+  }
+  .topo-node-sub {
+    font-family: "Segoe UI", system-ui, sans-serif;
+    font-size: 10px; fill: var(--text-secondary);
+    pointer-events: none;
+  }
+  .topo-edge { fill: none; stroke: var(--border-strong); stroke-width: 2; transition: stroke 0.35s ease, stroke-width 0.35s ease; }
+  .topo-edge.critical { stroke: var(--critical); stroke-width: 2.5; stroke-dasharray: 6 4; animation: edge-dash 1s linear infinite; }
+  .topo-edge.warning  { stroke: var(--warning);  stroke-width: 2.5; }
+  .topo-edge.healthy  { stroke: var(--success); }
+  @keyframes edge-dash { to { stroke-dashoffset: -10; } }
+
+  /* ─── Timeline ───────────────────────────────────────────────── */
+  .timeline {
+    list-style: none; margin: 0; padding: 0;
+    max-height: 380px; overflow-y: auto;
+  }
+  .timeline::-webkit-scrollbar { width: 10px; }
+  .timeline::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 4px; }
+  .timeline-item {
+    display: grid;
+    grid-template-columns: 88px 110px 1fr auto;
+    gap: 14px;
+    padding: 10px 18px;
+    border-bottom: 1px solid var(--border);
+    align-items: start;
+    transition: background 0.15s ease;
+  }
+  .timeline-item:hover { background: #fafafa; }
+  .timeline-item:last-child { border-bottom: none; }
+  .timeline-item.new { animation: tl-flash 1.4s ease-out; }
+  @keyframes tl-flash {
+    0%   { background: var(--info-bg); }
+    100% { background: transparent; }
+  }
+  .timeline-time {
+    font-family: "Cascadia Code","Consolas","SF Mono",monospace;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    font-variant-numeric: tabular-nums;
+    padding-top: 1px;
+  }
+  .timeline-source {
+    font-size: 11px; font-weight: 600;
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+    text-align: center;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+  }
+  .timeline-source.diagnostician { background: #e1dfdd; color: #393939; }
+  .timeline-source.remediator    { background: #fce100; color: #463600; }
+  .timeline-source.verifier      { background: #b4a0ff; color: #312050; }
+  .timeline-source.communicator  { background: #b3e5fc; color: #003d5b; }
+  .timeline-source.system        { background: #d2d0ce; color: #323130; }
+  .timeline-source.human         { background: #d1fae5; color: #064e3b; }
+  .timeline-msg { font-size: 13px; color: var(--text); }
+  .timeline-msg code {
+    font-family: "Cascadia Code","Consolas",monospace;
+    font-size: 12px;
+    background: var(--panel-alt);
+    padding: 1px 4px;
+    border-radius: var(--radius-sm);
+    color: var(--text);
+  }
+  .timeline-empty {
+    padding: 32px 18px;
+    text-align: center;
+    color: var(--text-tertiary);
+    font-size: 13px;
+  }
+
+  /* ─── HITL modal ─────────────────────────────────────────────── */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.45);
+    display: grid; place-items: center;
+    z-index: 1000;
+    backdrop-filter: blur(2px);
+    animation: fade-in 0.2s ease;
+  }
+  .modal-overlay[hidden] { display: none; }
+  @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+  .modal {
+    background: var(--panel);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    width: 560px;
+    max-width: calc(100vw - 32px);
+    max-height: calc(100vh - 32px);
+    overflow: auto;
+    border-top: 4px solid var(--warning);
+    animation: modal-rise 0.25s cubic-bezier(0.2, 0.9, 0.3, 1);
+  }
+  @keyframes modal-rise {
+    from { transform: translateY(20px); opacity: 0; }
+    to   { transform: translateY(0); opacity: 1; }
+  }
+  .modal-header {
+    padding: 18px 22px 12px 22px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .modal-header .icon-warn {
+    width: 32px; height: 32px;
+    background: var(--warning); color: #fff;
+    border-radius: 50%;
+    display: grid; place-items: center;
+    flex-shrink: 0;
+    font-size: 16px; font-weight: 700;
+  }
+  .modal-header h3 { font-size: 18px; }
+  .modal-sub { font-size: 12px; color: var(--text-secondary); margin-top: 2px; }
+  .modal-body { padding: 0 22px 18px 22px; }
+  .modal-section-title {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-top: 14px;
+    margin-bottom: 6px;
+  }
+  .modal-card {
+    background: var(--panel-alt);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    font-size: 13px;
+  }
+  .modal-card .kv {
+    display: grid;
+    grid-template-columns: 130px 1fr;
+    gap: 4px 12px;
+    margin: 0;
+  }
+  .modal-card .kv dt { color: var(--text-secondary); font-weight: 500; }
+  .modal-card .kv dd { margin: 0; color: var(--text); font-weight: 600; word-break: break-word; }
+  .modal-card .kv dd code {
+    font-family: "Cascadia Code","Consolas",monospace;
+    font-size: 12px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    padding: 1px 5px;
+    border-radius: var(--radius-sm);
+  }
+  .modal-evidence {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.55;
+  }
+  .modal-evidence ul { margin: 6px 0 0 0; padding-left: 18px; }
+  .modal-evidence li { margin: 2px 0; }
+  .modal-actions {
+    padding: 14px 22px 18px 22px;
+    border-top: 1px solid var(--border);
+    display: flex; justify-content: flex-end; gap: 8px;
+  }
+  .btn {
+    font-family: inherit;
+    font-size: 13px; font-weight: 600;
+    padding: 8px 18px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.15s ease;
+  }
+  .btn-reject {
+    background: var(--panel);
+    color: var(--critical);
+    border-color: var(--border-strong);
+  }
+  .btn-reject:hover { background: var(--critical-bg); border-color: var(--critical); }
+  .btn-approve { background: var(--primary); color: #fff; }
+  .btn-approve:hover { background: var(--primary-hover); }
+  .btn-approve:active { background: var(--primary-pressed); }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .risk-pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px;
+    border-radius: 11px;
+    font-size: 10px; font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    background: var(--critical-bg);
+    color: var(--critical);
+  }
+  .muted { color: var(--text-tertiary); }
+  .mono  { font-family: "Cascadia Code","Consolas",monospace; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+
+<!-- ─── Service URL bar (live link) ──────────────────────────────── -->
+<div class="service-bar">
+  <label>Service URL</label>
+  <input type="text" id="service-url" value="http://localhost:8765" spellcheck="false" autocomplete="off">
+  <button id="connect-btn" class="connect-btn">Connect</button>
+  <button id="disconnect-btn" style="display:none;">Disconnect</button>
+  <span class="service-status offline" id="service-status">
+    <span class="dot"></span>
+    <span id="service-status-label">offline · manual mode</span>
+  </span>
+</div>
+
+<!-- ─── LAB SIMULATOR control strip ──────────────────────────────── -->
+<div class="lab-strip">
+  <span class="lab-strip-label">Lab Simulator · Cluster State</span>
+  <span class="lab-strip-note" id="override-note">manual mode</span>
+  <div class="state-switches" role="tablist">
+    <button class="state-btn" data-state="normal">Normal</button>
+    <button class="state-btn" data-state="degraded">Degraded</button>
+    <button class="state-btn" data-state="recovering">Recovering</button>
+    <button class="state-btn" data-state="recovered">Recovered</button>
+  </div>
+  <button id="hitl-trigger" class="hitl-trigger" disabled>
+    <span>⚠</span> Trigger HITL Approval
+  </button>
+</div>
+
+<!-- ─── Azure-style top bar ──────────────────────────────────────── -->
+<header class="topbar">
+  <span class="azure-mark">
+    <svg width="20" height="20" viewBox="0 0 96 96" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="azg" x1="0" x2="1" y1="0" y2="1">
+          <stop offset="0%" stop-color="#0078D4"/>
+          <stop offset="100%" stop-color="#5BB6FF"/>
+        </linearGradient>
+      </defs>
+      <path fill="url(#azg)" d="M33.4 7.2L4 80h21.6l28-58.4 4.8 14L40 80h29l-22.6-58.4L33.4 7.2zM61.2 7.2L92 80H70.4l-5.2-14h-7.4l11-58.8z"/>
+    </svg>
+    Microsoft Azure
+  </span>
+  <nav class="breadcrumb">
+    <span>Subscriptions</span><span class="sep">›</span>
+    <span>Contoso Commerce Prod</span><span class="sep">›</span>
+    <span>rg-commerce-prod</span><span class="sep">›</span>
+    <span>aks-commerce-eastus</span><span class="sep">›</span>
+    <span class="leaf">payment-service</span>
+  </nav>
+  <div class="topbar-right">
+    <span class="icon-btn" title="Notifications">🔔</span>
+    <span class="icon-btn" title="Settings">⚙</span>
+    <span class="avatar">SC</span>
+  </div>
+</header>
+
+<div class="resource-header">
+  <div class="resource-title">
+    <span class="resource-title-icon">⊕</span>
+    payment-service
+    <span class="pill info">Production</span>
+  </div>
+  <div class="resource-subtitle mono">
+    aks-commerce-eastus · namespace: payments · 5 replicas · Deployment version <span id="dep-version">v2.4.1</span>
+  </div>
+</div>
+
+<section id="banner" class="status-banner healthy">
+  <div class="banner-icon" id="banner-icon">✓</div>
+  <div class="banner-text">
+    <div class="banner-title" id="banner-title">All services operating normally</div>
+    <div class="banner-subtitle" id="banner-subtitle">No active alerts. Last incident: 6 days ago.</div>
+  </div>
+  <div class="banner-meta mono" id="banner-meta">
+    14:01:00 UTC<br>
+    <span class="muted">Tuesday · Nov 19</span>
+  </div>
+</section>
+
+<main id="main">
+  <section class="section">
+    <header class="section-head">
+      <h2>Service Health Indicators</h2>
+      <span class="meta">Window: last 5 min · auto-refresh 30s</span>
+    </header>
+    <div class="section-body">
+      <div class="tile-grid">
+        <div class="tile healthy" data-tile="p95">
+          <div class="tile-label">payment-service · P95 latency</div>
+          <div class="tile-value-row"><span class="tile-value">215</span><span class="tile-unit">ms</span></div>
+          <div class="tile-meta">
+            <span class="tile-trend steady">→ baseline</span><span>·</span><span>threshold: 1000ms</span>
+          </div>
+          <span class="tile-status pill healthy">healthy</span>
+        </div>
+        <div class="tile healthy" data-tile="err5xx">
+          <div class="tile-label">payment-service · 5xx error rate</div>
+          <div class="tile-value-row"><span class="tile-value">0.20</span><span class="tile-unit">%</span></div>
+          <div class="tile-meta">
+            <span class="tile-trend steady">→ baseline</span><span>·</span><span>threshold: 2%</span>
+          </div>
+          <span class="tile-status pill healthy">healthy</span>
+        </div>
+        <div class="tile healthy" data-tile="pods">
+          <div class="tile-label">payment-service · pod state</div>
+          <div class="tile-value-row"><span class="tile-value">5/5</span><span class="tile-unit">Running</span></div>
+          <div class="tile-meta">
+            <span class="tile-trend steady">0 CrashLoopBackOff</span><span>·</span><span>0 Pending</span>
+          </div>
+          <span class="tile-status pill healthy">healthy</span>
+        </div>
+        <div class="tile healthy" data-tile="checkout">
+          <div class="tile-label">checkout-api · 5xx error rate</div>
+          <div class="tile-value-row"><span class="tile-value">0.40</span><span class="tile-unit">%</span></div>
+          <div class="tile-meta">
+            <span class="tile-trend steady">→ baseline</span><span>·</span><span>downstream dependent</span>
+          </div>
+          <span class="tile-status pill healthy">healthy</span>
+        </div>
+        <div class="tile healthy" data-tile="cart">
+          <div class="tile-label">cart_abandonment_rate</div>
+          <div class="tile-value-row"><span class="tile-value">2.10</span><span class="tile-unit">%</span></div>
+          <div class="tile-meta">
+            <span class="tile-trend steady">→ baseline 2.1%</span><span>·</span><span>business metric</span>
+          </div>
+          <span class="tile-status pill healthy">healthy</span>
+        </div>
+        <div class="tile healthy" data-tile="alerts">
+          <div class="tile-label">Active alerts</div>
+          <div class="tile-value-row"><span class="tile-value">0</span><span class="tile-unit">firing</span></div>
+          <div class="tile-meta">
+            <span class="tile-trend steady">no critical · no warning</span>
+          </div>
+          <span class="tile-status pill healthy">healthy</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <header class="section-head">
+      <h2>Service dependency map</h2>
+      <span class="meta">Source: AKS service mesh · Istio</span>
+    </header>
+    <div class="section-body">
+      <svg class="topology" viewBox="0 0 880 220" xmlns="http://www.w3.org/2000/svg" id="topology">
+        <path id="edge-fe-co"     class="topo-edge healthy" d="M155,110 L255,110"/>
+        <path id="edge-co-pay"    class="topo-edge healthy" d="M395,110 L495,110"/>
+        <path id="edge-co-cart"   class="topo-edge healthy" d="M335,140 L335,180 L195,180 L195,140"/>
+        <path id="edge-pay-db"    class="topo-edge healthy" d="M635,110 L735,110"/>
+        <path id="edge-pay-fraud" class="topo-edge healthy" d="M575,140 L575,200"/>
+        <g class="topo-node" data-node="frontend">
+          <rect class="topo-node-rect" x="55" y="85" width="100" height="50" rx="6" fill="#dff6dd" stroke="#107c10" stroke-width="1.5"/>
+          <text class="topo-node-text" x="105" y="108" text-anchor="middle">frontend</text>
+          <text class="topo-node-sub"  x="105" y="124" text-anchor="middle">web</text>
+        </g>
+        <g class="topo-node" data-node="checkout">
+          <rect class="topo-node-rect" x="255" y="85" width="140" height="50" rx="6" fill="#dff6dd" stroke="#107c10" stroke-width="1.5"/>
+          <text class="topo-node-text" x="325" y="108" text-anchor="middle">checkout-api</text>
+          <text class="topo-node-sub"  x="325" y="124" text-anchor="middle">downstream of payment</text>
+        </g>
+        <g class="topo-node" data-node="payment">
+          <rect class="topo-node-rect" x="495" y="85" width="140" height="50" rx="6" fill="#dff6dd" stroke="#107c10" stroke-width="2"/>
+          <text class="topo-node-text" x="565" y="108" text-anchor="middle">payment-service</text>
+          <text class="topo-node-sub"  x="565" y="124" text-anchor="middle" id="payment-version">v2.4.1 · 5 pods</text>
+        </g>
+        <g class="topo-node" data-node="db">
+          <rect class="topo-node-rect" x="735" y="85" width="100" height="50" rx="6" fill="#dff6dd" stroke="#107c10" stroke-width="1.5"/>
+          <text class="topo-node-text" x="785" y="108" text-anchor="middle">payment-db</text>
+          <text class="topo-node-sub"  x="785" y="124" text-anchor="middle">Cosmos DB</text>
+        </g>
+        <g class="topo-node" data-node="cart">
+          <rect class="topo-node-rect" x="135" y="160" width="120" height="50" rx="6" fill="#dff6dd" stroke="#107c10" stroke-width="1.5"/>
+          <text class="topo-node-text" x="195" y="183" text-anchor="middle">cart-api</text>
+          <text class="topo-node-sub"  x="195" y="199" text-anchor="middle">sibling</text>
+        </g>
+        <g class="topo-node" data-node="fraud">
+          <rect class="topo-node-rect" x="505" y="175" width="140" height="40" rx="6" fill="#dff6dd" stroke="#107c10" stroke-width="1.5"/>
+          <text class="topo-node-text" x="575" y="200" text-anchor="middle">fraud-check-api</text>
+        </g>
+      </svg>
+    </div>
+  </section>
+
+  <section class="section">
+    <header class="section-head">
+      <h2>Incident timeline · MAF agent activity</h2>
+      <span class="meta" id="timeline-meta">No active incident</span>
+    </header>
+    <ul class="timeline" id="timeline">
+      <li class="timeline-empty">No active incident. The agents are idle.</li>
+    </ul>
+  </section>
+</main>
+
+<!-- ─── HITL approval modal ──────────────────────────────────────── -->
+<div class="modal-overlay" id="hitl-modal" hidden role="dialog" aria-modal="true" aria-labelledby="hitl-title">
+  <div class="modal">
+    <header class="modal-header">
+      <div class="icon-warn">⚠</div>
+      <div>
+        <h3 id="hitl-title">Approval Required — Production Mutation</h3>
+        <div class="modal-sub">
+          Microsoft Agent Framework · <span id="hitl-requested-by">Remediator</span> agent ·
+          Approval ID <span class="mono" id="hitl-id">apr_demo</span>
+        </div>
+      </div>
+    </header>
+    <div class="modal-body">
+      <div class="modal-section-title">Proposed action</div>
+      <div class="modal-card">
+        <dl class="kv">
+          <dt>Tool</dt>          <dd><code id="hitl-tool">rollback_deployment</code></dd>
+          <dt>Arguments</dt>     <dd id="hitl-args"><code>{}</code></dd>
+          <dt>From version</dt>  <dd id="hitl-from">—</dd>
+          <dt>To version</dt>    <dd id="hitl-to">—</dd>
+          <dt>Initiated by</dt>  <dd id="hitl-initiator">Remediator agent (auto)</dd>
+          <dt>Blast radius</dt>  <dd id="hitl-blast">—</dd>
+          <dt>Risk</dt>          <dd><span class="risk-pill" id="hitl-risk">High</span></dd>
+        </dl>
+      </div>
+      <div class="modal-section-title">
+        Diagnostician evidence (confidence: <span id="hitl-confidence">—</span>)
+      </div>
+      <div class="modal-evidence">
+        <ul id="hitl-evidence"></ul>
+      </div>
+    </div>
+    <footer class="modal-actions">
+      <button class="btn btn-reject" id="hitl-reject">Reject</button>
+      <button class="btn btn-approve" id="hitl-approve">Approve &amp; execute</button>
+    </footer>
+  </div>
+</div>
+
+<script>
+/* ────────────────────────────────────────────────────────────────────
+   STATE PRESETS (local fallback, also used for SLI lookup when live)
+   ──────────────────────────────────────────────────────────────────── */
+const STATES = {
+  normal: {
+    banner: { kind: 'healthy', icon: '✓',
+      title: 'All services operating normally',
+      sub:   'No active alerts. Last incident: 6 days ago.',
+      meta:  '14:01:00 UTC' },
+    depVersion: 'v2.4.0',
+    paymentVersion: 'v2.4.0 · 5 pods',
+    tiles: {
+      p95:      { value:'215', unit:'ms', status:'healthy', trend:'→ baseline', trendCls:'steady' },
+      err5xx:   { value:'0.20', unit:'%', status:'healthy', trend:'→ baseline', trendCls:'steady' },
+      pods:     { value:'5/5', unit:'Running', status:'healthy', trend:'0 CrashLoopBackOff', trendCls:'steady' },
+      checkout: { value:'0.40', unit:'%', status:'healthy', trend:'→ baseline', trendCls:'steady' },
+      cart:     { value:'2.10', unit:'%', status:'healthy', trend:'→ baseline 2.1%', trendCls:'steady' },
+      alerts:   { value:'0', unit:'firing', status:'healthy', trend:'no critical · no warning', trendCls:'steady' },
+    },
+    topology: { frontend:'healthy', checkout:'healthy', payment:'healthy', db:'healthy', cart:'healthy', fraud:'healthy' },
+    edges:    { 'fe-co':'healthy','co-pay':'healthy','co-cart':'healthy','pay-db':'healthy','pay-fraud':'healthy' },
+    timelineMeta: 'No active incident',
+    timeline: [],
+  },
+  degraded: {
+    banner: { kind: 'critical', icon: '!',
+      title: 'CRITICAL · payment-service degraded',
+      sub:   'Cascading checkout failures detected. Diagnostician analysing. Remediation pending human approval.',
+      meta:  '14:07:58 UTC' },
+    depVersion: 'v2.4.1',
+    paymentVersion: 'v2.4.1 · 2/5 pods',
+    tiles: {
+      p95:      { value:'8042', unit:'ms', status:'critical', trend:'↑ 37× baseline', trendCls:'up' },
+      err5xx:   { value:'35.2', unit:'%', status:'critical', trend:'↑ from 0.2%', trendCls:'up' },
+      pods:     { value:'2/5', unit:'Running', status:'critical', trend:'3 CrashLoopBackOff', trendCls:'up' },
+      checkout: { value:'12.1', unit:'%', status:'warning', trend:'↑ cascading from payment', trendCls:'up' },
+      cart:     { value:'9.40', unit:'%', status:'critical', trend:'↑ 4.1× baseline', trendCls:'up' },
+      alerts:   { value:'3', unit:'firing', status:'critical', trend:'2 critical · 1 warning', trendCls:'up' },
+    },
+    topology: { frontend:'healthy', checkout:'warning', payment:'critical', db:'warning', cart:'healthy', fraud:'warning' },
+    edges:    { 'fe-co':'healthy','co-pay':'critical','co-cart':'healthy','pay-db':'warning','pay-fraud':'warning' },
+    timelineMeta: 'Incident in progress · awaiting human approval',
+    timeline: [
+      { t:'14:07:42', src:'system',        msg:'Auto-detection: <code>payment-service</code> 5xx rate exceeded threshold (35.2% > 2%)' },
+      { t:'14:07:43', src:'system',        msg:'Auto-detection: <code>payment-service</code> P95 latency exceeded threshold (8042ms > 1000ms)' },
+      { t:'14:07:44', src:'system',        msg:'Incident <code>INC-1119-0014</code> opened. Orchestrator dispatched.' },
+      { t:'14:07:46', src:'diagnostician', msg:'Agent turn started — analysing incident telemetry' },
+      { t:'14:07:48', src:'diagnostician', msg:'Tool call: <code>query_app_insights(payment-service, latency_p95)</code>' },
+      { t:'14:07:49', src:'diagnostician', msg:'Tool call: <code>query_app_insights(payment-service, error_rate_5xx)</code>' },
+      { t:'14:07:50', src:'diagnostician', msg:'Tool call: <code>get_aks_pod_status(payment-service)</code>' },
+      { t:'14:07:52', src:'diagnostician', msg:'Tool call: <code>get_recent_deployments(60)</code>' },
+      { t:'14:07:55', src:'diagnostician', msg:'Hypothesis emitted · confidence: <strong>HIGH</strong> · v2.4.1 memory leak suspected' },
+      { t:'14:07:56', src:'remediator',    msg:'Agent turn started — translating hypothesis to remediation' },
+      { t:'14:07:58', src:'remediator',    msg:'<strong>HITL approval requested</strong>: <code>rollback_deployment(payment-service, v2.4.1 → v2.4.0)</code>' },
+    ],
+  },
+  recovering: {
+    banner: { kind: 'warning', icon: '⟳',
+      title: 'Mitigation applied — verifying recovery',
+      sub:   'Rollback to v2.4.0 executed at 14:08:35 UTC. Verifier polling SLIs.',
+      meta:  '14:08:48 UTC' },
+    depVersion: 'v2.4.0',
+    paymentVersion: 'v2.4.0 · 5/5 pods',
+    tiles: {
+      p95:      { value:'1100', unit:'ms', status:'warning', trend:'↓ from 8042ms', trendCls:'down' },
+      err5xx:   { value:'4.10', unit:'%', status:'warning', trend:'↓ from 35.2%', trendCls:'down' },
+      pods:     { value:'5/5', unit:'Running', status:'healthy', trend:'↓ 0 CrashLoopBackOff', trendCls:'down' },
+      checkout: { value:'1.80', unit:'%', status:'healthy', trend:'↓ from 12.1%', trendCls:'down' },
+      cart:     { value:'3.10', unit:'%', status:'warning', trend:'↓ from 9.4%', trendCls:'down' },
+      alerts:   { value:'1', unit:'firing', status:'warning', trend:'0 critical · 1 warning', trendCls:'down' },
+    },
+    topology: { frontend:'healthy', checkout:'healthy', payment:'warning', db:'healthy', cart:'healthy', fraud:'healthy' },
+    edges:    { 'fe-co':'healthy','co-pay':'warning','co-cart':'healthy','pay-db':'healthy','pay-fraud':'healthy' },
+    timelineMeta: 'Mitigation applied · verification in progress',
+    timeline: [
+      { t:'14:07:42', src:'system',        msg:'Auto-detection: <code>payment-service</code> 5xx rate exceeded threshold' },
+      { t:'14:07:46', src:'diagnostician', msg:'Agent turn started — analysing incident telemetry' },
+      { t:'14:07:55', src:'diagnostician', msg:'Hypothesis emitted · confidence: HIGH · v2.4.1 memory leak suspected' },
+      { t:'14:07:58', src:'remediator',    msg:'HITL approval requested: <code>rollback_deployment(payment-service, v2.4.1 → v2.4.0)</code>' },
+      { t:'14:08:34', src:'human',         msg:'<strong>Approval granted</strong> by <code>sre-on-call@contoso.com</code>' },
+      { t:'14:08:35', src:'remediator',    msg:'Tool call executing: <code>rollback_deployment</code>' },
+      { t:'14:08:38', src:'remediator',    msg:'Rollback success · <code>payment-service</code> now running <code>v2.4.0</code>' },
+      { t:'14:08:40', src:'verifier',      msg:'Agent turn started — independently verifying recovery' },
+      { t:'14:08:42', src:'verifier',      msg:'Tool call: <code>check_sli_recovery(payment-service, latency_p95)</code> · partial' },
+      { t:'14:08:45', src:'verifier',      msg:'Tool call: <code>check_sli_recovery(payment-service, pod_health)</code> · within bounds' },
+      { t:'14:08:48', src:'verifier',      msg:'Polling SLIs · 2 of 3 checks within bounds · continuing to monitor' },
+    ],
+  },
+  recovered: {
+    banner: { kind: 'healthy', icon: '✓',
+      title: 'Incident resolved · payment-service nominal',
+      sub:   'Recovery confirmed at 14:09:08 UTC. Total time-to-mitigate: 1m 26s. Post-incident review pending.',
+      meta:  '14:09:14 UTC' },
+    depVersion: 'v2.4.0',
+    paymentVersion: 'v2.4.0 · 5/5 pods',
+    tiles: {
+      p95:      { value:'218', unit:'ms', status:'healthy', trend:'↓ back to baseline', trendCls:'down' },
+      err5xx:   { value:'0.22', unit:'%', status:'healthy', trend:'↓ back to baseline', trendCls:'down' },
+      pods:     { value:'5/5', unit:'Running', status:'healthy', trend:'all pods healthy', trendCls:'steady' },
+      checkout: { value:'0.42', unit:'%', status:'healthy', trend:'↓ back to baseline', trendCls:'down' },
+      cart:     { value:'2.20', unit:'%', status:'healthy', trend:'→ back to baseline 2.1%', trendCls:'steady' },
+      alerts:   { value:'0', unit:'firing', status:'healthy', trend:'all alerts auto-resolved', trendCls:'steady' },
+    },
+    topology: { frontend:'healthy', checkout:'healthy', payment:'healthy', db:'healthy', cart:'healthy', fraud:'healthy' },
+    edges:    { 'fe-co':'healthy','co-pay':'healthy','co-cart':'healthy','pay-db':'healthy','pay-fraud':'healthy' },
+    timelineMeta: 'Incident resolved · INC-1119-0014 closed',
+    timeline: [
+      { t:'14:07:42', src:'system',        msg:'Auto-detection: <code>payment-service</code> 5xx rate exceeded threshold' },
+      { t:'14:07:55', src:'diagnostician', msg:'Hypothesis emitted · confidence: HIGH · v2.4.1 memory leak' },
+      { t:'14:07:58', src:'remediator',    msg:'HITL approval requested: rollback to v2.4.0' },
+      { t:'14:08:34', src:'human',         msg:'Approval granted by <code>sre-on-call@contoso.com</code>' },
+      { t:'14:08:38', src:'remediator',    msg:'Rollback executed successfully · v2.4.1 → v2.4.0' },
+      { t:'14:08:48', src:'verifier',      msg:'2 of 3 SLI checks within bounds · continuing to monitor' },
+      { t:'14:09:05', src:'verifier',      msg:'All 3 SLI checks within bounds · <strong>verdict: recovered=true</strong>' },
+      { t:'14:09:08', src:'communicator',  msg:'Tool call: <code>post_status_page_update(severity=resolved)</code>' },
+      { t:'14:09:10', src:'communicator',  msg:'Tool call: <code>post_teams_update(...)</code> · #incidents notified' },
+      { t:'14:09:12', src:'system',        msg:'Incident <code>INC-1119-0014</code> closed · MTTM: <strong>1m 26s</strong>' },
+      { t:'14:09:14', src:'system',        msg:'Post-incident review ticket created · assignee: <code>platform-team</code>' },
+    ],
+  },
+};
+
+const HEALTH_FILL = {
+  healthy:  { fill:'#dff6dd', stroke:'#107c10' },
+  warning:  { fill:'#fff4ce', stroke:'#b88217' },
+  critical: { fill:'#fde7e9', stroke:'#a4262c' },
+};
+
+/* ────────────────────────────────────────────────────────────────────
+   GLOBAL STATE
+   ──────────────────────────────────────────────────────────────────── */
+const App = {
+  mode: 'manual',          // 'manual' | 'live'
+  serviceUrl: null,        // base URL when live
+  currentScenario: 'normal',
+  hitlRejected: false,
+  pollHandle: null,
+  pollIntervalMs: 1200,
+  lastSeenTimelineLen: 0,
+  lastSeenApprovalId: null,
+  currentApprovalId: null, // approval id shown in modal
+  decisionInFlight: false,
+};
+
+/* ────────────────────────────────────────────────────────────────────
+   PRESENTATION — render from a scenario name (with optional overrides)
+   ──────────────────────────────────────────────────────────────────── */
+function renderScenario(name, overrides = {}) {
+  const st = STATES[name];
+  if (!st) return;
+  App.currentScenario = name;
+
+  document.querySelectorAll('.state-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.state === name);
+  });
+
+  // Banner
+  const banner = document.getElementById('banner');
+  banner.className = `status-banner ${st.banner.kind}`;
+  document.getElementById('banner-icon').textContent = st.banner.icon;
+
+  if (name === 'degraded' && App.hitlRejected) {
+    document.getElementById('banner-title').textContent =
+      'CRITICAL · approval REJECTED — escalated to senior SRE';
+    document.getElementById('banner-subtitle').innerHTML =
+      'Remediator action declined by on-call. Manual remediation in progress. Pager fired to <code>sre-lead@contoso.com</code>.';
+  } else {
+    document.getElementById('banner-title').textContent = overrides.bannerTitle || st.banner.title;
+    document.getElementById('banner-subtitle').textContent = overrides.bannerSub || st.banner.sub;
+  }
+  document.getElementById('banner-meta').innerHTML =
+    `${overrides.bannerMeta || st.banner.meta}<br><span class="muted">Tuesday · Nov 19</span>`;
+
+  // Resource header
+  document.getElementById('dep-version').textContent = overrides.depVersion || st.depVersion;
+  document.getElementById('payment-version').textContent = overrides.paymentVersion || st.paymentVersion;
+
+  // Tiles
+  Object.entries(st.tiles).forEach(([key, t]) => {
+    const tile = document.querySelector(`.tile[data-tile="${key}"]`);
+    if (!tile) return;
+    tile.classList.remove('healthy','warning','critical');
+    tile.classList.add(t.status);
+    tile.querySelector('.tile-value').textContent = t.value;
+    tile.querySelector('.tile-unit').textContent  = t.unit;
+    const trend = tile.querySelector('.tile-meta .tile-trend');
+    trend.className = `tile-trend ${t.trendCls}`;
+    trend.textContent = t.trend;
+    const pill = tile.querySelector('.tile-status');
+    pill.className = `tile-status pill ${t.status}`;
+    pill.textContent = t.status;
+  });
+
+  // Topology
+  Object.entries(st.topology).forEach(([node, h]) => {
+    const rect = document.querySelector(`.topo-node[data-node="${node}"] rect`);
+    if (!rect) return;
+    const c = HEALTH_FILL[h];
+    rect.setAttribute('fill',   c.fill);
+    rect.setAttribute('stroke', c.stroke);
+  });
+  Object.entries(st.edges).forEach(([id, h]) => {
+    const e = document.getElementById(`edge-${id}`);
+    if (!e) return;
+    e.classList.remove('healthy','warning','critical');
+    e.classList.add(h);
+  });
+
+  // Timeline (use overrides if live mode supplied events; otherwise local preset)
+  renderTimeline(overrides.timeline || st.timeline, overrides.timelineMeta || st.timelineMeta);
+
+  // HITL trigger enable state (manual mode only — live mode auto-shows modal)
+  const trigger = document.getElementById('hitl-trigger');
+  if (App.mode === 'manual') {
+    trigger.disabled = !(name === 'degraded' && !App.hitlRejected);
+  } else {
+    trigger.disabled = true;
+    trigger.title = 'In live mode, approvals are surfaced automatically by the service';
+  }
+}
+
+function renderTimeline(events, meta) {
+  document.getElementById('timeline-meta').textContent = meta || '';
+  const tl = document.getElementById('timeline');
+  if (!events || !events.length) {
+    tl.innerHTML = '<li class="timeline-empty">No active incident. The agents are idle.</li>';
+    App.lastSeenTimelineLen = 0;
+    return;
+  }
+  const isNewItems = events.length > App.lastSeenTimelineLen;
+  const items = [...events].reverse().map((e, idx) => {
+    // Flash the newest items if we just received new ones
+    const isNew = isNewItems && idx < (events.length - App.lastSeenTimelineLen);
+    return `
+      <li class="timeline-item${isNew ? ' new' : ''}">
+        <span class="timeline-time">${e.t}</span>
+        <span class="timeline-source ${e.src}">${e.src.toUpperCase()}</span>
+        <span class="timeline-msg">${e.msg}</span>
+        <span class="timeline-badge"></span>
+      </li>`;
+  }).join('');
+  tl.innerHTML = items;
+  App.lastSeenTimelineLen = events.length;
+}
+
+/* ────────────────────────────────────────────────────────────────────
+   HITL MODAL
+   ──────────────────────────────────────────────────────────────────── */
+function openHITLModalFromApproval(approval) {
+  document.getElementById('hitl-id').textContent           = approval.id || '—';
+  document.getElementById('hitl-requested-by').textContent = approval.requested_by || 'Remediator';
+  document.getElementById('hitl-tool').textContent         = approval.tool || '—';
+  document.getElementById('hitl-args').innerHTML           = '<code>' + escapeHtml(JSON.stringify(approval.args || {}, null, 2)) + '</code>';
+  document.getElementById('hitl-from').textContent         = approval.from_version || '—';
+  document.getElementById('hitl-to').textContent           = approval.to_version || '—';
+  document.getElementById('hitl-blast').textContent        = approval.blast_radius || 'unspecified';
+  document.getElementById('hitl-confidence').textContent   = (approval.confidence || '—').toUpperCase();
+  document.getElementById('hitl-risk').textContent         = (approval.risk || 'High') + ' · Production mutation';
+
+  const ev = document.getElementById('hitl-evidence');
+  const items = (approval.evidence && approval.evidence.length)
+    ? approval.evidence
+    : ['(No evidence provided by Diagnostician)'];
+  ev.innerHTML = items.map(s => `<li>${escapeHtml(s)}</li>`).join('');
+
+  App.currentApprovalId = approval.id || null;
+  document.getElementById('hitl-modal').hidden = false;
+  document.getElementById('hitl-approve').disabled = false;
+  document.getElementById('hitl-reject').disabled  = false;
+}
+
+function openHITLModalLocal() {
+  // Manual mode fake approval — uses the canonical scenario story.
+  openHITLModalFromApproval({
+    id: 'apr_' + Math.random().toString(16).slice(2, 6),
+    requested_by: 'Remediator',
+    tool: 'rollback_deployment',
+    args: { deployment: 'payment-service', reason: 'v2.4.1 memory leak suspected' },
+    from_version: 'v2.4.1 (deployed 18 min ago)',
+    to_version:   'v2.4.0 (previous stable)',
+    blast_radius: 'payment-service deployment only · 5 pods',
+    risk: 'High',
+    confidence: 'high',
+    evidence: [
+      'Latency: P95 8042ms vs 215ms baseline (37× regression)',
+      'Error rate: 35.2% 5xx vs 0.2% baseline',
+      'Pods: 3 of 5 in CrashLoopBackOff (OOMKilled)',
+      'Recent change: payment-service v2.4.1 deployed 18 min ago by ci-cd-pipeline',
+      'Change notes: "Performance optimization: connection pooling refactor"',
+    ],
+  });
+}
+
+function closeHITL() {
+  document.getElementById('hitl-modal').hidden = true;
+  App.currentApprovalId = null;
+}
+
+async function approveHITL() {
+  if (App.decisionInFlight) return;
+  if (App.mode === 'live' && App.currentApprovalId) {
+    App.decisionInFlight = true;
+    document.getElementById('hitl-approve').disabled = true;
+    document.getElementById('hitl-reject').disabled  = true;
+    try {
+      await postJSON(`${App.serviceUrl}/hitl/${App.currentApprovalId}/decision`,
+                     { decision: 'approve', decided_by: 'dashboard-operator' });
+      App.lastSeenApprovalId = App.currentApprovalId;
+      closeHITL();
+      // The notebook drives the state change after it sees the decision; the
+      // dashboard will reflect it on the next poll.
+    } catch (err) {
+      alert('Failed to submit decision: ' + err.message);
+    } finally {
+      App.decisionInFlight = false;
+    }
+  } else {
+    closeHITL();
+    App.hitlRejected = false;
+    renderScenario('recovering');
+  }
+}
+
+async function rejectHITL() {
+  if (App.decisionInFlight) return;
+  if (App.mode === 'live' && App.currentApprovalId) {
+    App.decisionInFlight = true;
+    document.getElementById('hitl-approve').disabled = true;
+    document.getElementById('hitl-reject').disabled  = true;
+    try {
+      await postJSON(`${App.serviceUrl}/hitl/${App.currentApprovalId}/decision`,
+                     { decision: 'reject', decided_by: 'dashboard-operator' });
+      App.lastSeenApprovalId = App.currentApprovalId;
+      closeHITL();
+    } catch (err) {
+      alert('Failed to submit decision: ' + err.message);
+    } finally {
+      App.decisionInFlight = false;
+    }
+  } else {
+    closeHITL();
+    App.hitlRejected = true;
+    renderScenario('degraded');
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────
+   LIVE LINK — connect / poll / disconnect
+   ──────────────────────────────────────────────────────────────────── */
+function setStatus(kind, label) {
+  const el = document.getElementById('service-status');
+  el.className = `service-status ${kind}`;
+  document.getElementById('service-status-label').textContent = label;
+}
+
+async function postJSON(url, body) {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0,120)}`);
+  return res.json();
+}
+
+async function getJSON(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+async function connect() {
+  const url = document.getElementById('service-url').value.trim().replace(/\/+$/, '');
+  if (!url) return;
+  setStatus('offline', 'connecting…');
+  try {
+    const h = await getJSON(`${url}/health`);
+    if (!h.ok) throw new Error('health check returned not-ok');
+    App.serviceUrl = url;
+    App.mode = 'live';
+    setStatus('live', `live · ${url}`);
+    document.getElementById('connect-btn').textContent = 'Reconnect';
+    document.getElementById('connect-btn').classList.add('connected');
+    document.getElementById('disconnect-btn').style.display = '';
+    document.getElementById('override-note').textContent = 'live — switches override the service';
+    startPolling();
+  } catch (err) {
+    setStatus('error', `error: ${err.message}`);
+    App.mode = 'manual';
+    App.serviceUrl = null;
+  }
+}
+
+function disconnect() {
+  stopPolling();
+  App.mode = 'manual';
+  App.serviceUrl = null;
+  App.lastSeenApprovalId = null;
+  setStatus('offline', 'offline · manual mode');
+  document.getElementById('connect-btn').textContent = 'Connect';
+  document.getElementById('connect-btn').classList.remove('connected');
+  document.getElementById('disconnect-btn').style.display = 'none';
+  document.getElementById('override-note').textContent = 'manual mode';
+}
+
+function startPolling() {
+  stopPolling();
+  App.pollHandle = setInterval(pollOnce, App.pollIntervalMs);
+  pollOnce();  // immediate
+}
+
+function stopPolling() {
+  if (App.pollHandle) clearInterval(App.pollHandle);
+  App.pollHandle = null;
+}
+
+async function pollOnce() {
+  if (App.mode !== 'live' || !App.serviceUrl) return;
+  try {
+    const [state, pending] = await Promise.all([
+      getJSON(`${App.serviceUrl}/state`),
+      getJSON(`${App.serviceUrl}/hitl/pending`),
+    ]);
+
+    // Render the scenario from service, overriding timeline with live events.
+    renderScenario(state.scenario || 'normal', {
+      timeline: state.timeline || [],
+      timelineMeta: (state.timeline && state.timeline.length)
+        ? `${state.timeline.length} events · live from ${new URL(App.serviceUrl).host}`
+        : 'No active incident',
+      depVersion: (state.deployment_versions && state.deployment_versions['payment-service']) || undefined,
+    });
+
+    // Auto-show modal if there is a new pending approval we haven't seen.
+    if (pending && pending.length) {
+      const top = pending[0];
+      // Only auto-open if modal is not already showing this id
+      if (top.id !== App.currentApprovalId &&
+          top.id !== App.lastSeenApprovalId) {
+        openHITLModalFromApproval(top);
+      }
+    } else if (App.currentApprovalId) {
+      // The approval was decided (likely by another operator). Close the modal.
+      const stillThere = (pending || []).some(p => p.id === App.currentApprovalId);
+      if (!stillThere) closeHITL();
+    }
+  } catch (err) {
+    setStatus('error', `poll error: ${err.message}`);
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────
+   STATE-SWITCH BUTTONS — also push to service when connected
+   ──────────────────────────────────────────────────────────────────── */
+async function onSwitchClicked(name) {
+  App.hitlRejected = false;
+  if (App.mode === 'live' && App.serviceUrl) {
+    // Push override to the service so notebook/other clients see it too.
+    try {
+      await postJSON(`${App.serviceUrl}/state/scenario`, { scenario: name });
+    } catch (err) {
+      // If service push fails, still render locally to keep the demo moving.
+      console.error('scenario push failed:', err);
+    }
+    // The next poll will fetch the new state. Render eagerly for snappy UX.
+    renderScenario(name);
+  } else {
+    renderScenario(name);
+  }
+}
+
+/* ────────────────────────────────────────────────────────────────────
+   Helpers
+   ──────────────────────────────────────────────────────────────────── */
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+/* ────────────────────────────────────────────────────────────────────
+   WIRING
+   ──────────────────────────────────────────────────────────────────── */
+document.querySelectorAll('.state-btn').forEach(btn => {
+  btn.addEventListener('click', () => onSwitchClicked(btn.dataset.state));
+});
+document.getElementById('hitl-trigger').addEventListener('click', () => {
+  if (App.mode !== 'manual') return;
+  if (App.currentScenario !== 'degraded' || App.hitlRejected) return;
+  openHITLModalLocal();
+});
+document.getElementById('hitl-approve').addEventListener('click', approveHITL);
+document.getElementById('hitl-reject').addEventListener('click',  rejectHITL);
+document.getElementById('hitl-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'hitl-modal') closeHITL();
+});
+document.getElementById('connect-btn').addEventListener('click', connect);
+document.getElementById('disconnect-btn').addEventListener('click', disconnect);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !document.getElementById('hitl-modal').hidden) closeHITL();
+  if (['1','2','3','4'].includes(e.key) && !['INPUT','TEXTAREA'].includes(document.activeElement.tagName)) {
+    const names = ['normal','degraded','recovering','recovered'];
+    onSwitchClicked(names[parseInt(e.key,10)-1]);
+  }
+});
+
+// Init
+renderScenario('normal');
+</script>
+</body>
+</html>

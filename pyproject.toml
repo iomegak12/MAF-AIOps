@@ -1,0 +1,12 @@
+[project]
+name = "maf-aiops"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "agent-framework>=1.4.0",
+    "fastapi>=0.115",
+    "ipykernel>=7.2.0",
+    "nest-asyncio>=1.6.0",
+    "pydantic>=2.7",
+    "uvicorn[standard]>=0.32",
+]
