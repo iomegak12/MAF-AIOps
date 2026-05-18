@@ -64,7 +64,6 @@ uv.lock
 
 # Environments
 .env
-.env.*
 .venv
 env/
 venv/
